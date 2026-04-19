@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON="$(which python3)"
 LOG_FILE="$SCRIPT_DIR/briefing.log"
 
-CRON_LINE="0 8 * * * YOUTUBE_API_KEY=\"$YOUTUBE_API_KEY\" $PYTHON $SCRIPT_DIR/youtube_briefing.py >> $LOG_FILE 2>&1"
+CRON_LINE="0 8 * * * YOUTUBE_API_KEY=\"$YOUTUBE_API_KEY\" BOT_TOKEN=\"$BOT_TOKEN\" CHAT_ID=\"$CHAT_ID\" $PYTHON $SCRIPT_DIR/youtube_briefing.py >> $LOG_FILE 2>&1"
 
 # Install dependencies if needed
 if ! python3 -c "import googleapiclient" 2>/dev/null; then

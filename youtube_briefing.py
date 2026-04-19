@@ -3,12 +3,13 @@
 
 import os
 import re
-import subprocess
+import urllib.request
+import urllib.parse
+import json
 from datetime import datetime, timedelta, timezone
 from googleapiclient.discovery import build
 
 KEYWORDS = ["클로드 코드"]
-RECIPIENT = "010-9703-8710"
 MAX_RESULTS = 5
 
 
@@ -112,21 +113,25 @@ def build_message(results: dict[str, list[dict]]) -> str:
     return "\n".join(lines)
 
 
-def send_imessage(phone: str, message: str) -> None:
-    script = f'''
-    tell application "Messages"
-        set targetService to 1st service whose service type = iMessage
-        set targetBuddy to buddy "{phone}" of targetService
-        send "{message}" to targetBuddy
-    end tell
-    '''
-    result = subprocess.run(
-        ["osascript", "-e", script],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"iMessage 전송 실패: {result.stderr.strip()}")
+def send_telegram(message: str) -> None:
+    bot_token = os.environ.get("BOT_TOKEN")
+    chat_id = os.environ.get("CHAT_ID")
+    if not bot_token:
+        raise RuntimeError("BOT_TOKEN environment variable is not set")
+    if not chat_id:
+        raise RuntimeError("CHAT_ID environment variable is not set")
+
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    payload = json.dumps({
+        "chat_id": chat_id,
+        "text": message,
+        "parse_mode": "HTML",
+    }).encode("utf-8")
+    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        body = json.loads(resp.read())
+    if not body.get("ok"):
+        raise RuntimeError(f"Telegram 전송 실패: {body}")
 
 
 def main():
@@ -140,8 +145,8 @@ def main():
     message = build_message(results)
     print(message)
 
-    send_imessage(RECIPIENT, message)
-    print("iMessage 전송 완료")
+    send_telegram(message)
+    print("Telegram 전송 완료")
 
 
 if __name__ == "__main__":

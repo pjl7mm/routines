@@ -1,1 +1,1 @@
-google-api-python-client>=2.0.0
+# No external dependencies required; stdlib urllib is used for all HTTP calls.

@@ -7,56 +7,53 @@ import urllib.request
 import urllib.parse
 import json
 from datetime import datetime, timedelta, timezone
-from googleapiclient.discovery import build
 
 KEYWORDS = ["클로드 코드"]
 MAX_RESULTS = 5
 
+YOUTUBE_API_BASE = "https://www.googleapis.com/youtube/v3"
 
-def get_youtube_client():
+
+def _youtube_get(path: str, params: dict) -> dict:
     api_key = os.environ.get("YOUTUBE_API_KEY")
     if not api_key:
         raise RuntimeError("YOUTUBE_API_KEY environment variable is not set")
-    return build("youtube", "v3", developerKey=api_key)
+    params["key"] = api_key
+    url = f"{YOUTUBE_API_BASE}/{path}?{urllib.parse.urlencode(params)}"
+    with urllib.request.urlopen(url, timeout=30) as resp:
+        return json.loads(resp.read())
 
 
-def search_recent_videos(youtube, keyword: str) -> list[dict]:
+def search_recent_videos(keyword: str) -> list[dict]:
     published_after = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
-    search_response = (
-        youtube.search()
-        .list(
-            q=keyword,
-            part="snippet",
-            type="video",
-            publishedAfter=published_after,
-            maxResults=MAX_RESULTS,
-            order="relevance",
-        )
-        .execute()
-    )
+    search_data = _youtube_get("search", {
+        "q": keyword,
+        "part": "snippet",
+        "type": "video",
+        "publishedAfter": published_after,
+        "maxResults": MAX_RESULTS,
+        "order": "relevance",
+    })
 
-    video_ids = [item["id"]["videoId"] for item in search_response.get("items", [])]
+    video_ids = [item["id"]["videoId"] for item in search_data.get("items", [])]
     if not video_ids:
         return []
 
-    stats_response = (
-        youtube.videos()
-        .list(part="statistics,snippet", id=",".join(video_ids))
-        .execute()
-    )
+    stats_data = _youtube_get("videos", {
+        "part": "statistics,snippet",
+        "id": ",".join(video_ids),
+    })
 
     videos = []
-    for item in stats_response.get("items", []):
-        videos.append(
-            {
-                "title": item["snippet"]["title"],
-                "channel": item["snippet"]["channelTitle"],
-                "views": int(item["statistics"].get("viewCount", 0)),
-                "video_id": item["id"],
-            }
-        )
+    for item in stats_data.get("items", []):
+        videos.append({
+            "title": item["snippet"]["title"],
+            "channel": item["snippet"]["channelTitle"],
+            "views": int(item["statistics"].get("viewCount", 0)),
+            "video_id": item["id"],
+        })
 
     videos.sort(key=lambda v: v["views"], reverse=True)
     return videos[:MAX_RESULTS]
@@ -135,12 +132,11 @@ def send_telegram(message: str) -> None:
 
 
 def main():
-    youtube = get_youtube_client()
     results = {}
 
     for keyword in KEYWORDS:
         print(f"검색 중: {keyword}")
-        results[keyword] = search_recent_videos(youtube, keyword)
+        results[keyword] = search_recent_videos(keyword)
 
     message = build_message(results)
     print(message)

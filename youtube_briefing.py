@@ -124,8 +124,10 @@ def build_report(results: dict[str, list[dict]]) -> str:
 
         for i, v in enumerate(videos, 1):
             views = f"{v['views']:,}"
+            url = f"https://www.youtube.com/watch?v={v['video_id']}"
             lines.append(f"  {i}. {v['title']}")
             lines.append(f"     채널: {v['channel']} | 조회수: {views}")
+            lines.append(f"     {url}")
 
         titles = [v["title"] for v in videos]
         patterns = analyze_title_patterns(titles)

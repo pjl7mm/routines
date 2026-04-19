@@ -3,51 +3,61 @@
 
 import os
 import re
-import subprocess
+import sys
 from datetime import datetime, timedelta, timezone
-from googleapiclient.discovery import build
+
+import requests
 
 KEYWORDS = ["클로드 코드"]
-RECIPIENT = "010-9703-8710"
 MAX_RESULTS = 5
+YT_API_BASE = "https://www.googleapis.com/youtube/v3"
 
 
-def get_youtube_client():
+def get_api_key() -> str:
     api_key = os.environ.get("YOUTUBE_API_KEY")
     if not api_key:
         raise RuntimeError("YOUTUBE_API_KEY environment variable is not set")
-    return build("youtube", "v3", developerKey=api_key)
+    return api_key
 
 
-def search_recent_videos(youtube, keyword: str) -> list[dict]:
+def search_recent_videos(api_key: str, keyword: str) -> list[dict]:
     published_after = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
-    search_response = (
-        youtube.search()
-        .list(
-            q=keyword,
-            part="snippet",
-            type="video",
-            publishedAfter=published_after,
-            maxResults=MAX_RESULTS,
-            order="relevance",
-        )
-        .execute()
-    )
 
-    video_ids = [item["id"]["videoId"] for item in search_response.get("items", [])]
+    search_resp = requests.get(
+        f"{YT_API_BASE}/search",
+        params={
+            "key": api_key,
+            "q": keyword,
+            "part": "snippet",
+            "type": "video",
+            "publishedAfter": published_after,
+            "maxResults": MAX_RESULTS,
+            "order": "relevance",
+        },
+        timeout=10,
+    )
+    search_resp.raise_for_status()
+    items = search_resp.json().get("items", [])
+
+    video_ids = [item["id"]["videoId"] for item in items]
     if not video_ids:
         return []
 
-    stats_response = (
-        youtube.videos()
-        .list(part="statistics,snippet", id=",".join(video_ids))
-        .execute()
+    stats_resp = requests.get(
+        f"{YT_API_BASE}/videos",
+        params={
+            "key": api_key,
+            "id": ",".join(video_ids),
+            "part": "statistics,snippet",
+        },
+        timeout=10,
     )
+    stats_resp.raise_for_status()
 
     videos = []
-    for item in stats_response.get("items", []):
+    for item in stats_resp.json().get("items", []):
         videos.append(
             {
                 "title": item["snippet"]["title"],
@@ -68,19 +78,31 @@ def analyze_title_patterns(titles: list[str]) -> list[str]:
     if number_count:
         patterns.append(f"숫자 포함형 {number_count}개")
 
-    question_count = sum(1 for t in titles if re.search(r"[?？]|방법|어떻게|뭔가|무엇|왜|어디", t))
+    question_count = sum(
+        1 for t in titles if re.search(r"[?？]|방법|어떻게|뭔가|무엇|왜|어디", t)
+    )
     if question_count:
         patterns.append(f"질문형 {question_count}개")
 
-    compare_count = sum(1 for t in titles if re.search(r"vs|비교|차이|대비|versus", t, re.IGNORECASE))
+    compare_count = sum(
+        1 for t in titles if re.search(r"vs|비교|차이|대비|versus", t, re.IGNORECASE)
+    )
     if compare_count:
         patterns.append(f"비교형 {compare_count}개")
 
-    tutorial_count = sum(1 for t in titles if re.search(r"튜토리얼|tutorial|강의|가이드|사용법|입문|시작", t, re.IGNORECASE))
+    tutorial_count = sum(
+        1
+        for t in titles
+        if re.search(r"튜토리얼|tutorial|강의|가이드|사용법|입문|시작", t, re.IGNORECASE)
+    )
     if tutorial_count:
         patterns.append(f"튜토리얼/가이드형 {tutorial_count}개")
 
-    review_count = sum(1 for t in titles if re.search(r"리뷰|review|후기|사용기|써보니|써봤", t, re.IGNORECASE))
+    review_count = sum(
+        1
+        for t in titles
+        if re.search(r"리뷰|review|후기|사용기|써보니|써봤", t, re.IGNORECASE)
+    )
     if review_count:
         patterns.append(f"리뷰/후기형 {review_count}개")
 
@@ -90,7 +112,7 @@ def analyze_title_patterns(titles: list[str]) -> list[str]:
     return patterns
 
 
-def build_message(results: dict[str, list[dict]]) -> str:
+def build_report(results: dict[str, list[dict]]) -> str:
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     lines = [f"[유튜브 트렌드 브리핑] {now}\n"]
 
@@ -112,36 +134,16 @@ def build_message(results: dict[str, list[dict]]) -> str:
     return "\n".join(lines)
 
 
-def send_imessage(phone: str, message: str) -> None:
-    script = f'''
-    tell application "Messages"
-        set targetService to 1st service whose service type = iMessage
-        set targetBuddy to buddy "{phone}" of targetService
-        send "{message}" to targetBuddy
-    end tell
-    '''
-    result = subprocess.run(
-        ["osascript", "-e", script],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"iMessage 전송 실패: {result.stderr.strip()}")
-
-
 def main():
-    youtube = get_youtube_client()
+    api_key = get_api_key()
     results = {}
 
     for keyword in KEYWORDS:
-        print(f"검색 중: {keyword}")
-        results[keyword] = search_recent_videos(youtube, keyword)
+        print(f"검색 중: {keyword} ...", flush=True)
+        results[keyword] = search_recent_videos(api_key, keyword)
 
-    message = build_message(results)
-    print(message)
-
-    send_imessage(RECIPIENT, message)
-    print("iMessage 전송 완료")
+    report = build_report(results)
+    print(report)
 
 
 if __name__ == "__main__":

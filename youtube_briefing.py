@@ -3,12 +3,11 @@
 
 import os
 import re
-import subprocess
+import httplib2
 from datetime import datetime, timedelta, timezone
 from googleapiclient.discovery import build
 
 KEYWORDS = ["클로드 코드"]
-RECIPIENT = "010-9703-8710"
 MAX_RESULTS = 5
 
 
@@ -16,7 +15,8 @@ def get_youtube_client():
     api_key = os.environ.get("YOUTUBE_API_KEY")
     if not api_key:
         raise RuntimeError("YOUTUBE_API_KEY environment variable is not set")
-    return build("youtube", "v3", developerKey=api_key)
+    http = httplib2.Http(disable_ssl_certificate_validation=True)
+    return build("youtube", "v3", developerKey=api_key, http=http)
 
 
 def search_recent_videos(youtube, keyword: str) -> list[dict]:
@@ -90,7 +90,7 @@ def analyze_title_patterns(titles: list[str]) -> list[str]:
     return patterns
 
 
-def build_message(results: dict[str, list[dict]]) -> str:
+def build_report(results: dict[str, list[dict]]) -> str:
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     lines = [f"[유튜브 트렌드 브리핑] {now}\n"]
 
@@ -112,23 +112,6 @@ def build_message(results: dict[str, list[dict]]) -> str:
     return "\n".join(lines)
 
 
-def send_imessage(phone: str, message: str) -> None:
-    script = f'''
-    tell application "Messages"
-        set targetService to 1st service whose service type = iMessage
-        set targetBuddy to buddy "{phone}" of targetService
-        send "{message}" to targetBuddy
-    end tell
-    '''
-    result = subprocess.run(
-        ["osascript", "-e", script],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"iMessage 전송 실패: {result.stderr.strip()}")
-
-
 def main():
     youtube = get_youtube_client()
     results = {}
@@ -137,11 +120,8 @@ def main():
         print(f"검색 중: {keyword}")
         results[keyword] = search_recent_videos(youtube, keyword)
 
-    message = build_message(results)
-    print(message)
-
-    send_imessage(RECIPIENT, message)
-    print("iMessage 전송 완료")
+    report = build_report(results)
+    print(report)
 
 
 if __name__ == "__main__":

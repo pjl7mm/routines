@@ -1,1 +1,1 @@
-google-api-python-client>=2.0.0
+# YouTube Data API v3 is called via urllib (stdlib) - no extra dependencies needed

@@ -3,12 +3,10 @@
 
 import os
 import re
-import subprocess
 from datetime import datetime, timedelta, timezone
 from googleapiclient.discovery import build
 
 KEYWORDS = ["클로드 코드"]
-RECIPIENT = "010-9703-8710"
 MAX_RESULTS = 5
 
 
@@ -112,23 +110,6 @@ def build_message(results: dict[str, list[dict]]) -> str:
     return "\n".join(lines)
 
 
-def send_imessage(phone: str, message: str) -> None:
-    script = f'''
-    tell application "Messages"
-        set targetService to 1st service whose service type = iMessage
-        set targetBuddy to buddy "{phone}" of targetService
-        send "{message}" to targetBuddy
-    end tell
-    '''
-    result = subprocess.run(
-        ["osascript", "-e", script],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"iMessage 전송 실패: {result.stderr.strip()}")
-
-
 def main():
     youtube = get_youtube_client()
     results = {}
@@ -139,9 +120,6 @@ def main():
 
     message = build_message(results)
     print(message)
-
-    send_imessage(RECIPIENT, message)
-    print("iMessage 전송 완료")
 
 
 if __name__ == "__main__":

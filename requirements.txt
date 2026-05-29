@@ -1,1 +1,1 @@
-google-api-python-client>=2.0.0
+# No third-party dependencies — uses stdlib urllib for YouTube Data API v3

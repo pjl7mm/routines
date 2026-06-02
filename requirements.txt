@@ -1,1 +1,1 @@
-google-api-python-client>=2.0.0
+# YouTube Data API v3 접근은 표준 라이브러리(urllib, json)만 사용

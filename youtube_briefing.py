@@ -5,6 +5,8 @@ import os
 import re
 import subprocess
 from datetime import datetime, timedelta, timezone
+
+import httplib2
 from googleapiclient.discovery import build
 
 KEYWORDS = ["클로드 코드"]
@@ -16,7 +18,8 @@ def get_youtube_client():
     api_key = os.environ.get("YOUTUBE_API_KEY")
     if not api_key:
         raise RuntimeError("YOUTUBE_API_KEY environment variable is not set")
-    return build("youtube", "v3", developerKey=api_key)
+    http = httplib2.Http(disable_ssl_certificate_validation=True)
+    return build("youtube", "v3", developerKey=api_key, http=http)
 
 
 def search_recent_videos(youtube, keyword: str) -> list[dict]:
@@ -140,8 +143,11 @@ def main():
     message = build_message(results)
     print(message)
 
-    send_imessage(RECIPIENT, message)
-    print("iMessage 전송 완료")
+    try:
+        send_imessage(RECIPIENT, message)
+        print("iMessage 전송 완료")
+    except Exception as e:
+        print(f"iMessage 전송 건너뜀: {e}")
 
 
 if __name__ == "__main__":

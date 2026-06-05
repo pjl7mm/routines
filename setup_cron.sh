@@ -7,10 +7,6 @@ LOG_FILE="$SCRIPT_DIR/briefing.log"
 
 CRON_LINE="0 8 * * * YOUTUBE_API_KEY=\"$YOUTUBE_API_KEY\" $PYTHON $SCRIPT_DIR/youtube_briefing.py >> $LOG_FILE 2>&1"
 
-# Install dependencies if needed
-if ! python3 -c "import googleapiclient" 2>/dev/null; then
-    pip3 install --quiet google-api-python-client
-fi
 
 # Add cron job (skip if already exists)
 ( crontab -l 2>/dev/null | grep -v "youtube_briefing.py"; echo "$CRON_LINE" ) | crontab -

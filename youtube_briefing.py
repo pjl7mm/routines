@@ -3,51 +3,58 @@
 
 import os
 import re
-import subprocess
 from datetime import datetime, timedelta, timezone
-from googleapiclient.discovery import build
 
+import requests
+
+API_BASE = "https://www.googleapis.com/youtube/v3"
 KEYWORDS = ["클로드 코드"]
-RECIPIENT = "010-9703-8710"
 MAX_RESULTS = 5
 
 
-def get_youtube_client():
+def get_api_key() -> str:
     api_key = os.environ.get("YOUTUBE_API_KEY")
     if not api_key:
         raise RuntimeError("YOUTUBE_API_KEY environment variable is not set")
-    return build("youtube", "v3", developerKey=api_key)
+    return api_key
 
 
-def search_recent_videos(youtube, keyword: str) -> list[dict]:
+def search_recent_videos(api_key: str, keyword: str) -> list[dict]:
     published_after = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
-    search_response = (
-        youtube.search()
-        .list(
-            q=keyword,
-            part="snippet",
-            type="video",
-            publishedAfter=published_after,
-            maxResults=MAX_RESULTS,
-            order="relevance",
-        )
-        .execute()
+    search_response = requests.get(
+        f"{API_BASE}/search",
+        params={
+            "key": api_key,
+            "q": keyword,
+            "part": "snippet",
+            "type": "video",
+            "publishedAfter": published_after,
+            "maxResults": MAX_RESULTS,
+            "order": "relevance",
+        },
     )
+    search_response.raise_for_status()
 
-    video_ids = [item["id"]["videoId"] for item in search_response.get("items", [])]
+    video_ids = [
+        item["id"]["videoId"] for item in search_response.json().get("items", [])
+    ]
     if not video_ids:
         return []
 
-    stats_response = (
-        youtube.videos()
-        .list(part="statistics,snippet", id=",".join(video_ids))
-        .execute()
+    stats_response = requests.get(
+        f"{API_BASE}/videos",
+        params={
+            "key": api_key,
+            "part": "statistics,snippet",
+            "id": ",".join(video_ids),
+        },
     )
+    stats_response.raise_for_status()
 
     videos = []
-    for item in stats_response.get("items", []):
+    for item in stats_response.json().get("items", []):
         videos.append(
             {
                 "title": item["snippet"]["title"],
@@ -112,36 +119,16 @@ def build_message(results: dict[str, list[dict]]) -> str:
     return "\n".join(lines)
 
 
-def send_imessage(phone: str, message: str) -> None:
-    script = f'''
-    tell application "Messages"
-        set targetService to 1st service whose service type = iMessage
-        set targetBuddy to buddy "{phone}" of targetService
-        send "{message}" to targetBuddy
-    end tell
-    '''
-    result = subprocess.run(
-        ["osascript", "-e", script],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"iMessage 전송 실패: {result.stderr.strip()}")
-
-
 def main():
-    youtube = get_youtube_client()
+    api_key = get_api_key()
     results = {}
 
     for keyword in KEYWORDS:
         print(f"검색 중: {keyword}")
-        results[keyword] = search_recent_videos(youtube, keyword)
+        results[keyword] = search_recent_videos(api_key, keyword)
 
     message = build_message(results)
     print(message)
-
-    send_imessage(RECIPIENT, message)
-    print("iMessage 전송 완료")
 
 
 if __name__ == "__main__":
